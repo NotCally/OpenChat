@@ -23,38 +23,34 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
-      # --- NUOVO STEP PER RISOLVERE I REQUISITI MANCANTI ---
       - name: 2.5 Installazione Dipendenze Toolchain (Cython, Autoconf)
         run: |
           echo "Installazione dipendenze di compilazione"
-          # Installazione tramite Homebrew (necessario per autoconf/automake su macOS)
           brew install autoconf automake
-          
-          # Installazione di Cython (necessario per Py -> C/C++)
           pip install Cython
           
-      # --- FASE DI PREPARAZIONE DELLA TOOLCHAIN KIVY-iOS ---
       - name: 3. Installazione Kivy-iOS Toolchain
         run: |
-          # Installa il gestore della toolchain Kivy-iOS
           pip install kivy-ios
-          # Aggiunge il path dei binari Python (toolchain)
           echo "$(python -m site --user-base)/bin" >> $GITHUB_PATH
 
-      - name: 4. Prepara la Toolchain (Kivy & Core)
+      # --- STEP 4 CORRETTO: COMPILAZIONE PRIMA DI CREARE IL PROGETTO ---
+      - name: 4. Compilazione Binari Core (Python, Kivy, OpenSSL)
         run: |
-          # 4.1. Crea la struttura base del progetto Xcode
-          toolchain create ${{ env.APP_NAME }} . 
-          
-          # 4.2. Compila i binari core di Kivy e Python per iOS
+          echo "Inizio compilazione ricette core: Python 3, Kivy, OpenSSL. (Lunghezza stimata: 5-10 minuti)."
+          # PRIMA: Compila i binari (le ricette)
           toolchain build python3 kivy openssl hostpython3
           
-      - name: 5. Installa KivyMD (e le dipendenze Python) nell'ambiente iOS
+      # --- STEP 5 CORRETTO: CREAZIONE DEL PROGETTO E INSTALLAZIONE KIVYMD ---
+      - name: 5. Installa KivyMD e Crea la Struttura Xcode
         run: |
-          # 5.1. Installa KivyMD nell'interprete Python della Toolchain
+          # 5.1. Installa KivyMD usando il toolchain pip install
           toolchain pip install kivymd
           
-          # 5.2. Ricompila il progetto Xcode per includere le nuove librerie
+          # 5.2. ORA: Crea la struttura del progetto Xcode usando i binari compilati.
+          toolchain create ${{ env.APP_NAME }} . 
+          
+          # 5.3. FINALMENTE: Finalizza il progetto Xcode 
           toolchain build ios 
           
       - name: 6. Setup Code Signing and Provisioning
