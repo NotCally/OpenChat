@@ -5,11 +5,11 @@ on:
   push:
     branches:
       - main
-  workflow_dispatch:
+  workflow_dispatch: # Permette l'avvio manuale dalla scheda Actions
 
 jobs:
   build_ios:
-    # IL RUNNER MACÈ È OBBLIGATORIO PER XCODE E LA COMPILAZIONE iOS
+    # IL RUNNER MAC È OBBLIGATORIO PER XCODE E LA COMPILAZIONE iOS
     runs-on: macos-latest 
     
     env:
@@ -30,23 +30,29 @@ jobs:
         run: |
           # Installa il gestore della toolchain Kivy-iOS
           pip install kivy-ios
-          echo "$(python -m site --user-base)/bin" >> $GITHUB_PATH # Aggiorna PATH
+          # Aggiunge il path dei binari Python (toolchain)
+          echo "$(python -m site --user-base)/bin" >> $GITHUB_PATH
 
-      - name: 4. Crea Progetto Xcode e Compila le Dipendenze
+      - name: 4. Prepara la Toolchain (Kivy & Core)
         run: |
-          # 4.1. Crea la struttura del progetto Xcode dalla cartella corrente
-          # Questo genera la cartella di build e il progetto Xcode
-          toolchain create ${{ env.APP_NAME }} --url .
+          # 4.1. Crea la struttura base del progetto Xcode
+          # CORREZIONE: Rimosso --url, usiamo la directory ('.') come argomento posizionale.
+          toolchain create ${{ env.APP_NAME }} . 
           
-          # 4.2. Installa le dipendenze Python per iOS
-          toolchain pip install -r requirements.txt
+          # 4.2. Compila i binari core di Kivy e Python per iOS
+          toolchain build python3 kivy openssl hostpython3
           
-          # 4.3. Compila tutti i binari Python (Kivy, KivyMD) per iOS
-          toolchain build python3 kivy kivymd
-
+      - name: 5. Installa KivyMD (e le dipendenze Python) nell'ambiente iOS
+        run: |
+          # 5.1. Installa KivyMD nell'interprete Python della Toolchain
+          toolchain pip install kivymd
+          
+          # 5.2. Ricompila il progetto Xcode per includere le nuove librerie
+          toolchain build ios 
+          
       # --- FASE DI FIRMA DEL CODICE (Code Signing) ---
-      - name: 5. Setup Code Signing and Provisioning
-        # I Segreti sono usati per accedere ai file di firma senza esporli nel codice
+      - name: 6. Setup Code Signing and Provisioning
+        # Questi segreti devono esistere nelle impostazioni del tuo repository
         env:
           P12_BASE64: ${{ secrets.P12_BASE64 }}
           PROVISIONING_PROFILE_BASE64: ${{ secrets.PROVISIONING_PROFILE_BASE64 }}
@@ -57,36 +63,33 @@ jobs:
           security create-keychain -p "$P12_PASSWORD" "$KEYCHAIN_PATH"
           security default-keychain -s "$KEYCHAIN_PATH"
           security unlock-keychain -p "$P12_PASSWORD" "$KEYCHAIN_PATH"
-
-          # Importa il certificato .p12
+          
           echo "$P12_BASE64" | base64 --decode > $RUNNER_TEMP/certificate.p12
           security import $RUNNER_TEMP/certificate.p12 -k "$KEYCHAIN_PATH" -P "$P12_PASSWORD" -A
           
-          # Installa il Provisioning Profile
           PROFILE_PATH=~/Library/MobileDevice/Provisioning\ Profiles/
           mkdir -p "$PROFILE_PATH"
           echo "$PROVISIONING_PROFILE_BASE64" | base64 --decode > "$PROFILE_PATH/app_profile.mobileprovision"
 
       # --- FASE DI COMPILAZIONE XCODE FINALE ---
-      - name: 6. Archiviazione e Esportazione IPA (Usando un file .plist)
-        # Il file .plist è necessario per dire a Xcode come firmare l'app per TestFlight/App Store
-        # DEVI aggiungere un file ExportOptions.plist valido al tuo repository.
+      - name: 7. Archiviazione e Esportazione IPA
         run: |
+          # Determina il percorso corretto del progetto Xcode generato dalla toolchain
           PROJECT_DIR="build/ios/${{ env.APP_NAME }}-ios"
-          # 6.1. Archiviazione del progetto
+          
+          # 7.1. Archiviazione del progetto
           xcodebuild archive \
             -project $PROJECT_DIR/${{ env.APP_NAME }}.xcodeproj \
             -scheme ${{ env.APP_NAME }} \
             -archivePath $RUNNER_TEMP/${{ env.APP_NAME }}.xcarchive
             
-          # 6.2. Esportazione dell'IPA
+          # 7.2. Esportazione dell'IPA (Richiede il file ExportOptions.plist nel tuo repo)
           xcodebuild -exportArchive \
             -archivePath $RUNNER_TEMP/${{ env.APP_NAME }}.xcarchive \
             -exportOptionsPlist ExportOptions.plist \
             -exportPath $RUNNER_TEMP/ipa_output
 
-      - name: 7. Upload dell'IPA come Artefatto
-        # Carica il file IPA prodotto, così puoi scaricarlo e distribuirlo manualmente
+      - name: 8. Upload dell'IPA come Artefatto
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.APP_NAME }}-iOS-Build
