@@ -1,0 +1,93 @@
+name: KivyMD iOS Build via Toolchain
+
+# Trigger: Esegui sul push al main o manualmente
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build_ios:
+    # IL RUNNER MACÈ È OBBLIGATORIO PER XCODE E LA COMPILAZIONE iOS
+    runs-on: macos-latest 
+    
+    env:
+      APP_NAME: ChatClient
+      PYTHON_VERSION: 3.11
+      
+    steps:
+      - name: 1. Checkout del Codice
+        uses: actions/checkout@v4
+      
+      - name: 2. Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      # --- FASE DI PREPARAZIONE DELLA TOOLCHAIN KIVY-iOS ---
+      - name: 3. Installazione Kivy-iOS Toolchain
+        run: |
+          # Installa il gestore della toolchain Kivy-iOS
+          pip install kivy-ios
+          echo "$(python -m site --user-base)/bin" >> $GITHUB_PATH # Aggiorna PATH
+
+      - name: 4. Crea Progetto Xcode e Compila le Dipendenze
+        run: |
+          # 4.1. Crea la struttura del progetto Xcode dalla cartella corrente
+          # Questo genera la cartella di build e il progetto Xcode
+          toolchain create ${{ env.APP_NAME }} --url .
+          
+          # 4.2. Installa le dipendenze Python per iOS
+          toolchain pip install -r requirements.txt
+          
+          # 4.3. Compila tutti i binari Python (Kivy, KivyMD) per iOS
+          toolchain build python3 kivy kivymd
+
+      # --- FASE DI FIRMA DEL CODICE (Code Signing) ---
+      - name: 5. Setup Code Signing and Provisioning
+        # I Segreti sono usati per accedere ai file di firma senza esporli nel codice
+        env:
+          P12_BASE64: ${{ secrets.P12_BASE64 }}
+          PROVISIONING_PROFILE_BASE64: ${{ secrets.PROVISIONING_PROFILE_BASE64 }}
+          P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
+          
+        run: |
+          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
+          security create-keychain -p "$P12_PASSWORD" "$KEYCHAIN_PATH"
+          security default-keychain -s "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$P12_PASSWORD" "$KEYCHAIN_PATH"
+
+          # Importa il certificato .p12
+          echo "$P12_BASE64" | base64 --decode > $RUNNER_TEMP/certificate.p12
+          security import $RUNNER_TEMP/certificate.p12 -k "$KEYCHAIN_PATH" -P "$P12_PASSWORD" -A
+          
+          # Installa il Provisioning Profile
+          PROFILE_PATH=~/Library/MobileDevice/Provisioning\ Profiles/
+          mkdir -p "$PROFILE_PATH"
+          echo "$PROVISIONING_PROFILE_BASE64" | base64 --decode > "$PROFILE_PATH/app_profile.mobileprovision"
+
+      # --- FASE DI COMPILAZIONE XCODE FINALE ---
+      - name: 6. Archiviazione e Esportazione IPA (Usando un file .plist)
+        # Il file .plist è necessario per dire a Xcode come firmare l'app per TestFlight/App Store
+        # DEVI aggiungere un file ExportOptions.plist valido al tuo repository.
+        run: |
+          PROJECT_DIR="build/ios/${{ env.APP_NAME }}-ios"
+          # 6.1. Archiviazione del progetto
+          xcodebuild archive \
+            -project $PROJECT_DIR/${{ env.APP_NAME }}.xcodeproj \
+            -scheme ${{ env.APP_NAME }} \
+            -archivePath $RUNNER_TEMP/${{ env.APP_NAME }}.xcarchive
+            
+          # 6.2. Esportazione dell'IPA
+          xcodebuild -exportArchive \
+            -archivePath $RUNNER_TEMP/${{ env.APP_NAME }}.xcarchive \
+            -exportOptionsPlist ExportOptions.plist \
+            -exportPath $RUNNER_TEMP/ipa_output
+
+      - name: 7. Upload dell'IPA come Artefatto
+        # Carica il file IPA prodotto, così puoi scaricarlo e distribuirlo manualmente
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.APP_NAME }}-iOS-Build
+          path: $RUNNER_TEMP/ipa_output/*.ipa
