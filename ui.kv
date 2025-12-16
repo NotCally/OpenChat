@@ -1,0 +1,136 @@
+#:import dp kivy.metrics.dp
+#:import MDCard kivymd.uix.card.MDCard
+#:import MDLabel kivymd.uix.label.MDLabel
+
+# --- Definisce lo stile del widget Custom MessageBubble (INVARIATO) ---
+<MessageBubble>:
+    is_me: 'False'
+    orientation: 'vertical'
+    size_hint_y: None
+    height: self.minimum_height + dp(10)
+    padding: dp(5)
+
+    BoxLayout:
+        size_hint_y: None
+        height: self.minimum_height
+        padding: dp(5)
+        
+        Widget:
+            size_hint_x: 0.2 if root.is_me == 'True' else 0.05
+            height: 0
+        
+        MDCard:
+            size_hint_x: 0.75
+            size_hint_y: None
+            height: self.minimum_height
+            md_bg_color: 
+                app.theme_cls.primary_color if root.is_me == 'True' else [0.2, 0.2, 0.3, 1] 
+            radius: [dp(12), dp(12), dp(12), dp(12)]
+            elevation: 4
+            padding: dp(10)
+            
+            BoxLayout:
+                orientation: 'vertical'
+                size_hint_y: None
+                height: self.minimum_height
+                spacing: dp(5)
+                
+                MDLabel:
+                    text: root.text
+                    size_hint_y: None
+                    height: self.texture_size[1]
+                    color: 1, 1, 1, 1
+                    font_style: 'Body1'
+                    valign: 'top'
+                    text_size: self.width, None
+                
+                MDLabel:
+                    text: root.time_str
+                    size_hint_y: None
+                    height: self.texture_size[1]
+                    halign: 'right'
+                    color: 0.7, 0.7, 0.7, 1
+                    font_style: 'Caption'
+
+        Widget:
+            size_hint_x: 0.05 if root.is_me == 'True' else 0.2
+            height: 0
+
+# --- Struttura Principale dell'App ---
+MDBoxLayout:
+    orientation: 'vertical'
+    padding: dp(10)
+    spacing: dp(10)
+
+    # 1. BARRA IN ALTO (Header)
+    MDBoxLayout:
+        orientation: 'horizontal'
+        size_hint_y: None
+        height: dp(60)
+        padding: dp(5)
+        md_bg_color: 0.1, 0.1, 0.15, 1
+
+        MDLabel:
+            id: status_label
+            text: "Disconnesso. Tocca per connetterti."
+            size_hint_x: 1
+            halign: 'left'
+            valign: 'center'
+            font_style: 'H6'
+            color: app.theme_cls.accent_color
+        
+        MDIconButton:
+            icon: "cog"
+            on_release: app.show_connection_dialog() # Nuovo metodo per mostrare il popup
+
+    # 2. AREA CHAT (Scrollable - INVARIATA)
+    ScrollView:
+        id: chat_scroll
+        size_hint_y: 1
+
+        MDBoxLayout:
+            id: chat_list
+            orientation: 'vertical'
+            size_hint_y: None
+            height: self.minimum_height
+            spacing: dp(5)
+            padding: dp(10)
+
+    # 3. AREA INPUT (INVARIATA)
+    MDBoxLayout:
+        orientation: 'horizontal'
+        size_hint_y: None
+        height: dp(50)
+        spacing: dp(10)
+        padding: dp(5), dp(0), dp(5), dp(0)
+
+        MDIconButton:
+            icon: "emoticon-outline"
+            size_hint_x: None
+            width: dp(40)
+            on_release: print("Emoji Picker (Placeholder)")
+
+        MDIconButton:
+            icon: "file-outline"
+            size_hint_x: None
+            width: dp(40)
+            on_release: print("File Upload (Placeholder)")
+        
+        MDTextField:
+            id: msg_input
+            hint_text: "Scrivi un messaggio..."
+            mode: "rectangle"
+            size_hint_x: 1
+            disabled: True
+            on_text_validate: app.send_message()
+
+        MDIconButton:
+            id: send_btn
+            icon: "send"
+            theme_text_color: "Custom"
+            text_color: 1, 1, 1, 1
+            md_bg_color: app.theme_cls.primary_color
+            size_hint_x: None
+            width: dp(40)
+            on_release: app.send_message()
+            disabled: True

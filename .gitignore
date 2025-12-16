@@ -1,0 +1,7 @@
+# .gitignore
+__pycache__/
+*.pyc
+# Cartelle di build Kivy (iOS/Android)
+build/
+.buildozer/
+dist/
